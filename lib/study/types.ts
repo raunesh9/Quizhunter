@@ -1,0 +1,8 @@
+export type Slide = { number: number; title: string; text: string; notes: string; images: string[]; source?:string; sourceSlide?:number };
+export type Deck = { name: string; slides: Slide[]; warnings: string[]; sample?: boolean; documents?:string[] };
+export type Lesson = { slide: number; title: string; bigIdea: string; explanation: string[]; terms: {term:string;definition:string}[]; example: string; connections: string; misconceptions: string[]; check: {question:string;answer:string}; limitations:string[] };
+export type Card = {front:string;back:string;slide:number};
+export type Quiz = {question:string;options:string[];answer:number;explanation:string;slide:number};
+export type StudyMode = 'explain' | 'cards' | 'quiz' | 'ask';
+export type StudySettings = {depth:'detailed'|'simple'|'exam';level:'beginner'|'college'|'advanced'};
+export type StudyPack = {version:1; deck:Deck; lessons:Record<string,Lesson>; cards:Card[]; quiz:Quiz[]};
