@@ -5,4 +5,5 @@ export type Card = {front:string;back:string;slide:number};
 export type Quiz = {question:string;options:string[];answer:number;explanation:string;slide:number};
 export type StudyMode = 'explain' | 'cards' | 'quiz' | 'ask';
 export type StudySettings = {depth:'detailed'|'simple'|'exam';level:'beginner'|'college'|'advanced'};
-export type StudyPack = {version:1; deck:Deck; lessons:Record<string,Lesson>; cards:Card[]; quiz:Quiz[]};
+export type StudyProgress = {cards:number[]; quiz:number[]};
+export type StudyPack = {version:1; deck:Deck; lessons:Record<string,Lesson>; cards:Card[]; quiz:Quiz[]; progress?:StudyProgress};

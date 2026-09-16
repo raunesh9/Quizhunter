@@ -1,9 +1,19 @@
 import {z} from 'zod';
-const short=z.string().max(12000);const ref=z.number().int().min(1).max(180);
+import {MAX_COLLECTION_SLIDES,MAX_SLIDES_PER_FILE} from './limits';
+const short=z.string().max(12000);const ref=z.number().int().min(1).max(MAX_COLLECTION_SLIDES);
 export const lessonSchema=z.object({slide:ref,title:short,bigIdea:short,explanation:z.array(short).min(1).max(20),terms:z.array(z.object({term:short,definition:short})).max(30),example:short,connections:short,misconceptions:z.array(short).max(15),check:z.object({question:short,answer:short}),limitations:z.array(short).max(15)});
 export const cardSchema=z.object({front:short,back:short,slide:ref});
 export const quizSchema=z.object({question:short,options:z.array(short).length(4),answer:z.number().int().min(0).max(3),explanation:short,slide:ref});
-export const slideSchema=z.object({number:ref,title:z.string().max(200),text:z.string().max(50000),notes:z.string().max(50000),source:z.string().max(250).optional(),sourceSlide:z.number().int().min(1).max(60).optional(),images:z.array(z.string().max(3000000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/)).max(4)});
+export const slideSchema=z.object({number:ref,title:z.string().max(200),text:z.string().max(50000),notes:z.string().max(50000),source:z.string().max(250).optional(),sourceSlide:z.number().int().min(1).max(MAX_SLIDES_PER_FILE).optional(),images:z.array(z.string().max(3000000).regex(/^data:image\/(png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/)).max(4)});
+export const packSchema=z.object({
+ version:z.literal(1),
+ deck:z.object({name:z.string().max(250),slides:z.array(slideSchema).min(1).max(MAX_COLLECTION_SLIDES),warnings:z.array(z.string().max(1000)).max(2000),sample:z.boolean().optional(),documents:z.array(z.string().max(250)).max(MAX_COLLECTION_SLIDES).optional()}),
+ lessons:z.record(lessonSchema),cards:z.array(cardSchema).max(MAX_COLLECTION_SLIDES*60),quiz:z.array(quizSchema).max(MAX_COLLECTION_SLIDES*30),
+ progress:z.object({cards:z.array(ref).max(MAX_COLLECTION_SLIDES),quiz:z.array(ref).max(MAX_COLLECTION_SLIDES)}).optional()
+}).superRefine((pack,ctx)=>{
+ const refs=new Set(pack.deck.slides.map(s=>s.number));
+ if(refs.size!==pack.deck.slides.length||[...Object.values(pack.lessons),...pack.cards,...pack.quiz].some(x=>!refs.has(x.slide))||[...(pack.progress?.cards??[]),...(pack.progress?.quiz??[])].some(n=>!refs.has(n)))ctx.addIssue({code:z.ZodIssueCode.custom,message:'The pack contains invalid slide references.'});
+});
 export const requestSchema=z.object({mode:z.enum(['explain','cards','quiz','ask']),slides:z.array(slideSchema).min(1).max(6),context:z.string().max(12000).default(''),depth:z.enum(['detailed','simple','exam']),level:z.enum(['beginner','college','advanced']),question:z.string().max(2000).default('')});
 const str={type:'string'};const num={type:'integer'};const arr=(items:unknown)=>({type:'array',items});const obj=(properties:Record<string,unknown>)=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 export const outputSchemas={
