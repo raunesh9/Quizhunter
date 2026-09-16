@@ -15,7 +15,7 @@
     "desktop": "node node_modules/electron/install.js && electron desktop/main.cjs",
     "desktop:package": "npm run build && node scripts/package-desktop.mjs",
     "test:desktop": "node --test tests/desktop.test.mjs",
-    "test:study": "node --test tests/large-decks.test.mjs"
+    "test:study": "node --test tests/large-decks.test.mjs tests/study-agent.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -17,7 +17,7 @@ export async function startStudyServer(root,port=0){
  if(url.origin!==origin){res.writeHead(403);res.end('Invalid origin');return}
  if(url.pathname==='/__quizhunter_health'){res.writeHead(200,{'Content-Type':'application/json','Cache-Control':'no-store'});res.end(JSON.stringify({app:'Quizhunter',status:'ready'}));return}
  const headers=new Headers();for(const [key,value] of Object.entries(req.headers)){if(Array.isArray(value))value.forEach(v=>headers.append(key,v));else if(value!==undefined)headers.set(key,value)}
- const abort=new AbortController();req.on('aborted',()=>abort.abort());
+ const abort=new AbortController();req.on('aborted',()=>abort.abort());res.on('close',()=>{if(!res.writableEnded)abort.abort()});
  let body;if(!['GET','HEAD'].includes(req.method??'GET')){const chunks=[];let bytes=0;for await(const chunk of req){bytes+=chunk.length;if(bytes>14000000){res.writeHead(413,{'Content-Type':'application/json'});res.end(JSON.stringify({error:'This request is too large.'}));return}chunks.push(chunk)}body=Buffer.concat(chunks)}
  const request=new Request(url,{method:req.method,headers,body,signal:abort.signal});
  let response;
