@@ -1,6 +1,12 @@
 # Quizhunter
 
-A private study app for understanding PowerPoints and practicing what you learn.
+A Mac desktop app and private web app for understanding PowerPoints and practicing what you learn.
+
+## Mac application
+
+Open **Quizhunter** from your Applications folder. It includes its own runtime and starts its own private local server; Node.js, a terminal, and the Codex preview are not needed to run the packaged app. Only AI generation requires internet access.
+
+To build the Mac app from source, run `npm run desktop:package`. The `.app` is created under `release/`. The renderer runs sandboxed with Node integration disabled. Source decks and API keys stay in memory for the app session; save a study pack before quitting.
 
 ## Using the app
 
@@ -26,6 +32,7 @@ Open the Local URL printed by the server (normally http://localhost:5173).
 ```sh
 npx tsc --noEmit
 npm run build
+npm run test:desktop
 ```
 
 Hosting uses the registered Sites project in `.openai/hosting.json`.
@@ -53,4 +60,4 @@ Official implementation references: [Responses structured outputs](https://devel
 
 ## Verification
 
-Type checking and production build pass. Browser checks passed for sample lessons, flashcard reveal and missed-card review, multi-PowerPoint import with presentation order and notes, adding a PDF to an existing collection, and the WebMCP outline tool including invalid input rejection. Local API contract checks cover invalid keys, cross-origin requests, malformed input, source references above slide 60, structured-response validation, truncated outputs, and rate-limit handling with a mocked upstream response. No paid live model request has been made during development.
+Type checking and production build pass. Browser checks passed for sample lessons, flashcard reveal and missed-card review, multi-PowerPoint import with presentation order and notes, adding a PDF to an existing collection, and the WebMCP outline tool including invalid input rejection. Local API contract checks cover invalid keys, cross-origin requests, malformed input, source references above slide 60, structured-response validation, truncated outputs, and rate-limit handling with a mocked upstream response. The desktop bundle was also tested using its own embedded runtime. No paid live model request has been made during development.
