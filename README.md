@@ -1,6 +1,10 @@
 # Quizhunter
 
-A Mac desktop app and private web app that reads PDFs and PowerPoints, curates flashcards and quizzes, and exports practice material as JSON.
+A Mac desktop app and web app that reads PDFs and PowerPoints, curates flashcards and quizzes, and exports practice material as JSON.
+
+**Live website: [quizhunter.raunesh9.workers.dev](https://quizhunter.raunesh9.workers.dev)**
+
+The website is open to anyone with the link. Bring your own OpenAI API key to generate new study material; sample lessons and saved study packs work without a key. The Mac app also offers free local AI.
 
 ## Mac application
 
@@ -48,7 +52,7 @@ npm run test:study
 npm run test:desktop
 ```
 
-Hosting uses the registered Sites project in `.openai/hosting.json`.
+The live website is hosted on Cloudflare Workers. To publish an update after signing into Cloudflare, run `npm run build`, then `npx wrangler deploy --config dist/server/wrangler.json`. The build includes the app server and PDF reader assets. The existing `.openai/hosting.json` records the earlier Sites deployment.
 
 ## Local AI on this Mac
 
