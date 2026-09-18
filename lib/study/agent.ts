@@ -1,8 +1,10 @@
 import type {AgentResults,AgentSlideResult,Slide,StudySettings} from './types';
 import {validateAgentResult} from './schemas';
 import {studyBatches} from './batches';
+import {curateAgentResults} from './curation';
+import {ZodError} from 'zod';
 
-export const agentResultKey=(level:StudySettings['level'],slide:number)=>`${level}:${slide}`;
+export const agentResultKey=(level:StudySettings['level'],slide:number,pace:StudySettings['pace']='thorough')=>`${level}:${slide}${pace==='quick'?':quick':''}`;
 
 export class StudyRequestError extends Error {
   constructor(message:string,public status:number){super(message);this.name='StudyRequestError'}
@@ -22,6 +24,7 @@ type AgentOptions={
   slides:Slide[];
   level:StudySettings['level'];
   previous:AgentResults;
+  pace?:StudySettings['pace'];
   signal:AbortSignal;
   request:(slide:Slide,context:string,signal:AbortSignal)=>Promise<unknown>;
   onStart:(slide:Slide,completed:number,total:number)=>void;
@@ -30,8 +33,9 @@ type AgentOptions={
 };
 
 export async function runStudyAgent(options:AgentOptions){
-  const {slides,level,previous,signal,request,onStart,onComplete,onError}=options;
-  const pending=slides.filter(s=>!previous[agentResultKey(level,s.number)]);
+  const {slides,level,previous,pace,signal,request,onStart,onComplete,onError}=options;
+  const valid=curateAgentResults(previous,slides);
+  const pending=slides.filter(s=>!valid[agentResultKey(level,s.number,pace)]);
   let completed=slides.length-pending.length,consecutiveFailures=0;
   const failures:Record<number,string>={};
   for(const slide of pending){
@@ -42,11 +46,11 @@ export async function runStudyAgent(options:AgentOptions){
       const response=await request(slide,agentContext(slides,slide.number),signal);
       signal.throwIfAborted();
       const result=validateAgentResult(response,slide.number);
-      onComplete(agentResultKey(level,slide.number),result);
+      onComplete(agentResultKey(level,slide.number,pace),result);
       completed++;consecutiveFailures=0;
     }catch(error){
       if(signal.aborted)throw error;
-      const message=error instanceof Error?error.message:'This slide could not be completed.';
+      const message=error instanceof ZodError?'The model returned unusable study text. Continue the agent to retry this page.':error instanceof Error?error.message:'This slide could not be completed.';
       failures[slide.number]=message;onError(slide,message);
       consecutiveFailures++;
       if(error instanceof StudyRequestError&&[401,403,429].includes(error.status))throw error;

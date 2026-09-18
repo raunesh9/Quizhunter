@@ -7,6 +7,8 @@ if(!gotLock)app.quit();
 else{
  app.on('second-instance',()=>{if(window){if(window.isMinimized())window.restore();window.show();window.focus()}});
  app.whenReady().then(async()=>{
+  const {ensureLocalAI}=await import(pathToFileURL(path.join(__dirname,'local-ai.mjs')).href);
+  await ensureLocalAI(path.join(__dirname,'..'));
   const {startStudyServer}=await import(pathToFileURL(path.join(__dirname,'server.mjs')).href);
   server=await startStudyServer(path.join(__dirname,'..'));
   const isolatedSession=session.fromPartition('quizhunter');

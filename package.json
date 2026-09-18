@@ -6,6 +6,8 @@
     "node": ">=22.13.0"
   },
   "scripts": {
+    "postinstall": "node scripts/sync-pdf-assets.mjs",
+    "setup:pdf": "node scripts/sync-pdf-assets.mjs",
     "install:ci": "node scripts/install-ci.mjs",
     "dev": "node scripts/run-framework.mjs dev",
     "build": "node scripts/run-framework.mjs build",
@@ -15,7 +17,7 @@
     "desktop": "node node_modules/electron/install.js && electron desktop/main.cjs",
     "desktop:package": "npm run build && node scripts/package-desktop.mjs",
     "test:desktop": "node --test tests/desktop.test.mjs",
-    "test:study": "node --test tests/large-decks.test.mjs tests/study-agent.test.mjs"
+    "test:study": "node --test tests/large-decks.test.mjs tests/study-agent.test.mjs tests/study-export.test.mjs tests/pdf-parser.test.mjs tests/local-ai.test.mjs tests/practice-quality.test.mjs tests/collection-performance.test.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

@@ -8,7 +8,7 @@ test('desktop serves the app and PDF reader without exposing private files',asyn
  t.after(()=>server.close());
  const page=await fetch(server.origin);
  assert.equal(page.status,200);
- assert.match(await page.text(),/Drop your PowerPoints here/);
+ assert.match(await page.text(),/Upload study material/);
  const worker=await fetch(server.origin+'/pdf.worker.min.mjs');
  assert.equal(worker.status,200);
  assert.match(worker.headers.get('content-type'),/javascript/);

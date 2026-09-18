@@ -1,0 +1,14 @@
+"use client";
+import {useState} from 'react';
+import {Trash2,Search,RotateCcw} from 'lucide-react';
+import {Dialog,DialogContent,DialogDescription,DialogTitle} from '@/components/ui/dialog';
+import type {Deck} from '@/lib/study/types';
+
+export function CollectionManager({deck,open,onOpenChange,busy,onRemove,hiddenCount,onRestoreHidden}:{deck:Deck;open:boolean;onOpenChange:(open:boolean)=>void;busy:boolean;onRemove:(numbers:number[])=>void;hiddenCount:number;onRestoreHidden:()=>void}){
+ const [query,setQuery]=useState(''),[selected,setSelected]=useState<number[]>([]);
+ const matching=deck.slides.filter(s=>`${s.number} ${s.title} ${s.source??''}`.toLowerCase().includes(query.toLowerCase()));
+ const chosen=selected.filter(n=>deck.slides.some(s=>s.number===n));
+ const toggle=(n:number)=>setSelected(previous=>previous.includes(n)?previous.filter(x=>x!==n):[...previous,n]);
+ const remove=()=>{onRemove(chosen);setSelected([]);onOpenChange(false)};
+ return <Dialog open={open} onOpenChange={onOpenChange}><DialogContent className="collection-dialog"><DialogTitle>Make room for what matters.</DialogTitle><DialogDescription>Remove pages you no longer need. Their explanations, flashcards, and quiz questions leave this collection too. Your original files stay on your computer. You can undo the removal.</DialogDescription><label className="page-search"><Search size={18}/><input type="search" aria-label="Search pages" placeholder="Search a topic or filename…" value={query} onChange={e=>setQuery(e.target.value)}/></label><div className="page-selection"><span>{chosen.length} selected · {deck.slides.length} pages</span><button className="text-button" disabled={busy||!matching.length} onClick={()=>setSelected([...new Set([...chosen,...matching.map(s=>s.number)])])}>Select matching</button><button className="text-button" onClick={()=>setSelected([])}>Clear</button></div><div className="manage-pages">{matching.map(s=><label className="manage-page" key={s.number}><input type="checkbox" disabled={busy} checked={chosen.includes(s.number)} onChange={()=>toggle(s.number)}/><span className="page-number">{s.number}</span><span><strong>{s.title}</strong><small>{s.source??deck.name} · Original page {s.sourceSlide??s.number}</small></span></label>)}{!matching.length&&<p className="notice">No pages match this search.</p>}</div>{hiddenCount>0&&<button className="text-button" disabled={busy} onClick={onRestoreHidden}><RotateCcw size={16}/>Restore {hiddenCount} removed practice items / explanations</button>}<div className="actions end"><button className="button outline" onClick={()=>onOpenChange(false)}>Keep studying</button><button className="button danger" disabled={busy||!chosen.length} onClick={remove}><Trash2 size={16}/>Remove {chosen.length||'selected'} {chosen.length===1?'page':'pages'}</button></div></DialogContent></Dialog>;
+}

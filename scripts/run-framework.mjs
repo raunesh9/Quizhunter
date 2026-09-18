@@ -1,9 +1,14 @@
 import { spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { readExecutionProfile } from "./execution-profile.mjs";
+import "./sync-pdf-assets.mjs";
 
 const [command, ...args] = process.argv.slice(2);
 if (!["dev", "build"].includes(command)) throw new Error("Expected dev or build.");
+if(command==='dev'){
+  const {ensureLocalAI}=await import('../desktop/local-ai.mjs');
+  await ensureLocalAI(fileURLToPath(new URL('..',import.meta.url)));
+}
 const managedLinux = readExecutionProfile() === "managed-linux";
 
 if (managedLinux && command === "build") {
