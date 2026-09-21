@@ -54,7 +54,7 @@ test('Quick mode reduces lesson and practice output while preserving validation 
    assert.equal(body.format.properties.cards.maxItems,2);
    assert.equal(body.format.properties.quiz.maxItems,1);
    assert.equal(body.format.properties.lesson.properties.explanation.maxItems,2);
-   assert.match(body.messages[0].content,/250-400 words/);
+   assert.match(body.messages[0].content,/140-220 words/);
    return Response.json({done:true,message:{content:JSON.stringify({lesson:{slide:1,title:'Cells',bigIdea:'Cells need energy.',explanation:['Mitochondria produce ATP to supply energy.'],terms:[],example:'A cell uses ATP for work.',connections:'Energy powers cellular processes.',misconceptions:[],check:{question:'What do mitochondria produce?',answer:'ATP.'},limitations:[]},cards:good.cards,quiz:[{question:'What do mitochondria generate?',options:['ATP','DNA','Cellulose','Starch'],correctAnswer:'ATP',explanation:'ATP provides energy for cellular processes.',slide:1}],practiceStatus:'ready',practiceNote:'Cellular energy.'})}});
   };
   const response=await POST(make({...input,mode:'agent',pace:'quick'}));
@@ -77,5 +77,18 @@ test('Quick batches require a separate grounded result or explicit exclusion for
   };
   const response=await POST(make({...input,slides,mode:'quiz',pace:'quick'}));
   assert.equal(response.status,200);assert.equal(attempts,2);const data=await response.json();assert.equal(data.quiz.length,1);assert.equal(data.quiz[0].answer,0);
+ }finally{globalThis.fetch=real}
+});
+
+test('compact Quick bundles restore canonical lesson fields and resolve only explicitly labeled quiz answers',async()=>{
+ const real=globalThis.fetch;let ambiguous=false;
+ try{
+  globalThis.fetch=async(url,init)=>{
+   if(String(url).endsWith('/tags'))return Response.json({models:[{name:'gemma3:4b'}]});
+   const request=JSON.parse(init.body);assert.equal(request.format.properties.lesson.properties.terms,undefined);assert.ok(request.options.num_predict<3072);
+   return Response.json({done:true,message:{content:JSON.stringify({lesson:{slide:1,bigIdea:'Mitochondria provide cellular energy.',explanation:['Mitochondria generate ATP.'],limitations:[]},cards:good.cards,quiz:[{question:'What do mitochondria generate?',options:ambiguous?['ATP','DNA','Cellulose','Starch']:['A. ATP','B. DNA','C. Cellulose','D. Starch'],correctAnswer:'A',explanation:'ATP supplies energy for cellular processes.',slide:1}],practiceStatus:'ready',practiceNote:'Cellular energy.'})}});
+  };
+  const response=await POST(make({...input,mode:'agent',pace:'quick'}));assert.equal(response.status,200);const data=await response.json();assert.equal(data.quiz[0].answer,0);assert.deepEqual(data.lesson.terms,[]);assert.equal(data.lesson.title,'Cells');
+  ambiguous=true;assert.equal((await POST(make({...input,mode:'agent',pace:'quick'}))).status,502);
  }finally{globalThis.fetch=real}
 });

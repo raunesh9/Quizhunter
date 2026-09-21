@@ -13,6 +13,7 @@ export async function POST(request:Request){
  if(Number(request.headers.get('content-length')??0)>14000000)return fail('This batch is too large. Try fewer or smaller slides.',413);
  let body;try{const text=await request.text();if(text.length>14000000)return fail('This batch is too large.',413);body=requestSchema.parse(JSON.parse(text));}catch{return fail('The study request is invalid. Please reload the deck and try again.');}
  if(body.mode==='ask'&&!body.question.trim())return fail('Enter a question first.');
+ if(body.mode==='diagram'&&!body.slides[0].images.length)return fail('This slide has no source image. Import the PDF using Thorough mode to include page images.');
  if(body.mode==='cards'||body.mode==='quiz'){
   body.slides=body.slides.filter(s=>!practiceSkipReason(s));
   if(!body.slides.length)return Response.json({[body.mode]:[]},{headers});

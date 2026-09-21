@@ -9,6 +9,7 @@ export function practiceTextIssue(text:string):string|null {
  if(!value||!/[\p{L}\p{N}]/u.test(value))return 'Study text must contain a readable question or answer.';
  if(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\ufffd]/u.test(value)||/\[object Object\]/.test(value))return 'Study text contains unreadable characters.';
  const fields=value.match(/["“”](?:front|back|slide|practiceStatus|practiceNote|correctAnswer|additionalProperties|properties|required)["“”]\s*:/g)??[];
+ if(/^\s*\{\s*"type"\s*:\s*"object"/.test(value)&&/"properties"\s*:/.test(value))return 'Study text contains an output schema instead of an explanation.';
  if(fields.length>=2||/^[\s`]*(?:json\s*)?\{\s*["“”](?:cards|quiz|lesson)["“”]\s*:/i.test(value))return 'Study text contains a broken response instead of study material.';
  if(/(\b[\p{L}\p{N}]+\b)(?:[\s,;.!-]+\1){5,}/iu.test(value)||/([\s\S]{12,100}?)\1{4,}/u.test(value)||/[^\s]{160,}/u.test(value))return 'Study text contains repeated or unreadable output.';
  return null;
@@ -63,7 +64,7 @@ export function shuffledIndices(length:number,random:()=>number=Math.random):num
  return result;
 }
 
-export function quizRound(candidates:number[],previous:number[]=[],random:()=>number=Math.random):number[]{
+export function quizRound<T>(candidates:T[],previous:T[]=[],random:()=>number=Math.random):T[]{
  const next=shuffledIndices(candidates.length,random).map(i=>candidates[i]);
  // Retaking a quiz should visibly change its order when there is a choice.
  if(next.length>1&&next.every((n,i)=>n===(previous.length?previous:candidates)[i]))next.push(next.shift()!);

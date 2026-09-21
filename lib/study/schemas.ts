@@ -1,9 +1,10 @@
 import {z} from 'zod';
 import {MAX_COLLECTION_SLIDES,MAX_SLIDES_PER_FILE} from './limits';
 import {practiceQuestionIssue,practiceTextIssue} from './practice-quality';
-const short=z.string().max(12000);const ref=z.number().int().min(1).max(MAX_COLLECTION_SLIDES);
+const short=z.string().max(12000).superRefine((text,ctx)=>{if(text.trim()){const issue=practiceTextIssue(text);if(issue)ctx.addIssue({code:z.ZodIssueCode.custom,message:issue})}});const ref=z.number().int().min(1).max(MAX_COLLECTION_SLIDES);
+export const diagramSchema=z.object({slide:ref,title:short,summary:short,observations:z.array(short).max(12),relationships:z.array(short).max(12),limitations:z.array(short).max(12)});
 export const lessonSchema=z.object({slide:ref,title:short,bigIdea:short,explanation:z.array(short).min(1).max(20),terms:z.array(z.object({term:short,definition:short})).max(30),example:short,connections:short,misconceptions:z.array(short).max(15),check:z.object({question:short,answer:short}),limitations:z.array(short).max(15)});
-const practiceText=short.trim().min(1).superRefine((text,ctx)=>{const issue=practiceTextIssue(text);if(issue)ctx.addIssue({code:z.ZodIssueCode.custom,message:issue})});
+const practiceText=z.string().max(12000).trim().min(1).superRefine((text,ctx)=>{const issue=practiceTextIssue(text);if(issue)ctx.addIssue({code:z.ZodIssueCode.custom,message:issue})});
 const practiceQuestion=practiceText.superRefine((text,ctx)=>{const issue=practiceQuestionIssue(text);if(issue)ctx.addIssue({code:z.ZodIssueCode.custom,message:issue})});
 const normalized=(s:string)=>s.trim().replace(/\s+/g,' ').toLowerCase();
 export const cardSchema=z.object({front:practiceQuestion,back:practiceText,slide:ref});
@@ -26,22 +27,24 @@ export const packContentSchema=z.object({
  lessons:z.record(lessonSchema),cards:z.array(cardSchema).max(MAX_COLLECTION_SLIDES*60),quiz:z.array(quizSchema).max(MAX_COLLECTION_SLIDES*30),
  progress:z.object({cards:z.array(ref).max(MAX_COLLECTION_SLIDES),quiz:z.array(ref).max(MAX_COLLECTION_SLIDES)}).optional(),
  agentResults:z.record(agentSlideSchema).optional(),
+ diagrams:z.record(diagramSchema).optional(),
  hidden:z.object({cards:z.array(z.string().max(12200)).max(36000),quiz:z.array(z.string().max(12200)).max(18000),lessons:z.array(ref).max(MAX_COLLECTION_SLIDES)}).optional(),
  settings:z.object({depth:z.enum(['detailed','simple','exam']),level:z.enum(['beginner','college','advanced']),pace:z.enum(['quick','thorough']).optional()}).optional()
 });
 export const packSchema=packContentSchema.superRefine((pack,ctx)=>{
  const refs=new Set(pack.deck.slides.map(s=>s.number));
- if(refs.size!==pack.deck.slides.length||[...Object.values(pack.lessons),...pack.cards,...pack.quiz].some(x=>!refs.has(x.slide))||[...(pack.progress?.cards??[]),...(pack.progress?.quiz??[]),...(pack.hidden?.lessons??[])].some(n=>!refs.has(n)))ctx.addIssue({code:z.ZodIssueCode.custom,message:'The pack contains invalid slide references.'});
+ if(refs.size!==pack.deck.slides.length||[...Object.values(pack.lessons),...Object.values(pack.diagrams??{}),...pack.cards,...pack.quiz].some(x=>!refs.has(x.slide))||[...(pack.progress?.cards??[]),...(pack.progress?.quiz??[]),...(pack.hidden?.lessons??[])].some(n=>!refs.has(n)))ctx.addIssue({code:z.ZodIssueCode.custom,message:'The pack contains invalid slide references.'});
  for(const [key,result] of Object.entries(pack.agentResults??{})){if(!refs.has(result.lesson.slide)||!['beginner','college','advanced'].some(level=>key===`${level}:${result.lesson.slide}`||key===`${level}:${result.lesson.slide}:quick`))ctx.addIssue({code:z.ZodIssueCode.custom,message:'Invalid agent checkpoint.'});}
 });
-export const requestSchema=z.object({mode:z.enum(['explain','cards','quiz','ask','agent']),slides:z.array(slideSchema).min(1).max(6),context:z.string().max(12000).default(''),depth:z.enum(['detailed','simple','exam']),level:z.enum(['beginner','college','advanced']),pace:z.enum(['quick','thorough']).default('thorough'),question:z.string().max(2000).default('')}).refine(body=>body.mode!=='agent'||body.slides.length===1,{message:'Agent requests must contain exactly one slide.'});
+export const requestSchema=z.object({mode:z.enum(['explain','cards','quiz','ask','agent','diagram']),slides:z.array(slideSchema).min(1).max(6),context:z.string().max(12000).default(''),depth:z.enum(['detailed','simple','exam']),level:z.enum(['beginner','college','advanced']),pace:z.enum(['quick','thorough']).default('thorough'),question:z.string().max(2000).default('')}).refine(body=>!['agent','diagram'].includes(body.mode)||body.slides.length===1,{message:'This request must contain exactly one slide.'});
 const str={type:'string'};const num={type:'integer'};const arr=(items:unknown)=>({type:'array',items});const obj=(properties:Record<string,unknown>)=>({type:'object',properties,required:Object.keys(properties),additionalProperties:false});
 const lessonOutput=obj({slide:num,title:str,bigIdea:str,explanation:arr(str),terms:arr(obj({term:str,definition:str})),example:str,connections:str,misconceptions:arr(str),check:obj({question:str,answer:str}),limitations:arr(str)});
 export const outputSchemas={
+ diagram:obj({slide:num,title:str,summary:str,observations:arr(str),relationships:arr(str),limitations:arr(str)}),
  agent:obj({lesson:lessonOutput,cards:arr(obj({front:str,back:str,slide:num})),quiz:arr(obj({question:str,options:arr(str),answer:num,explanation:str,slide:num})),practiceStatus:{type:'string',enum:['ready','not_applicable']},practiceNote:str}),
  explain:obj({slide:num,title:str,bigIdea:str,explanation:arr(str),terms:arr(obj({term:str,definition:str})),example:str,connections:str,misconceptions:arr(str),check:obj({question:str,answer:str}),limitations:arr(str)}),
  cards:obj({cards:arr(obj({front:str,back:str,slide:num}))}),
  quiz:obj({quiz:arr(obj({question:str,options:arr(str),answer:num,explanation:str,slide:num}))}),
  ask:obj({answer:str,slides:arr(num)})
 };
-export function validateOutput(mode:string,value:unknown,refs:number[]){if(mode==='agent'){if(refs.length!==1)throw Error('Expected one slide');return validateAgentResult(value,refs[0]);}const allowed=(n:number)=>refs.includes(n);if(mode==='explain'){const x=lessonSchema.parse(value);if(!allowed(x.slide))throw Error('Invalid source reference');return x}if(mode==='cards'){const x=z.object({cards:z.array(cardSchema).max(60)}).parse(value);if(x.cards.some(c=>!allowed(c.slide)))throw Error('Invalid source reference');return x}if(mode==='quiz'){const x=z.object({quiz:z.array(quizSchema).max(30)}).parse(value);if(x.quiz.some(q=>!allowed(q.slide)||new Set(q.options).size!==4))throw Error('Invalid quiz');return x}const x=z.object({answer:short,slides:z.array(ref).max(6)}).parse(value);if(x.slides.some(n=>!allowed(n)))throw Error('Invalid source reference');return x;}
+export function validateOutput(mode:string,value:unknown,refs:number[]){if(mode==='diagram'){const x=diagramSchema.parse(value);if(refs.length!==1||x.slide!==refs[0])throw Error('Invalid diagram source reference');return x}if(mode==='agent'){if(refs.length!==1)throw Error('Expected one slide');return validateAgentResult(value,refs[0]);}const allowed=(n:number)=>refs.includes(n);if(mode==='explain'){const x=lessonSchema.parse(value);if(!allowed(x.slide))throw Error('Invalid source reference');return x}if(mode==='cards'){const x=z.object({cards:z.array(cardSchema).max(60)}).parse(value);if(x.cards.some(c=>!allowed(c.slide)))throw Error('Invalid source reference');return x}if(mode==='quiz'){const x=z.object({quiz:z.array(quizSchema).max(30)}).parse(value);if(x.quiz.some(q=>!allowed(q.slide)||new Set(q.options).size!==4))throw Error('Invalid quiz');return x}const x=z.object({answer:short,slides:z.array(ref).max(6)}).parse(value);if(x.slides.some(n=>!allowed(n)))throw Error('Invalid source reference');return x;}

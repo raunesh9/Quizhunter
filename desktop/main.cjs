@@ -1,7 +1,7 @@
-const {app,BrowserWindow,Menu,shell,dialog,session}=require('electron');
+const {app,BrowserWindow,Menu,shell,dialog,session,ipcMain}=require('electron');
 const path=require('node:path');
 const {pathToFileURL}=require('node:url');
-let server,window;
+let server,window,readyToClose=false,closing=false;
 const gotLock=app.requestSingleInstanceLock();
 if(!gotLock)app.quit();
 else{
@@ -14,7 +14,20 @@ else{
   const isolatedSession=session.fromPartition('quizhunter');
   isolatedSession.setPermissionRequestHandler((contents,permission,callback)=>callback(permission==='clipboard-sanitized-write'&&contents?.getURL().startsWith(server.origin+'/')));
   isolatedSession.setPermissionCheckHandler((_contents,permission,origin)=>permission==='clipboard-sanitized-write'&&origin===server.origin);
-  window=new BrowserWindow({width:1320,height:900,minWidth:740,minHeight:600,title:'Quizhunter',backgroundColor:'#f8f9fc',show:false,webPreferences:{nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,session:isolatedSession}});
+  window=new BrowserWindow({width:1320,height:900,minWidth:740,minHeight:600,title:'Quizhunter',backgroundColor:'#302920',show:false,webPreferences:{preload:path.join(__dirname,'preload.cjs'),nodeIntegration:false,contextIsolation:true,sandbox:true,webSecurity:true,session:isolatedSession}});
+  const {createLibrary}=await import(pathToFileURL(path.join(__dirname,'library.mjs')).href);
+  const library=createLibrary(path.join(app.getPath('userData'),'study-library'));
+  for(const operation of ['list','read','write','remove'])ipcMain.handle('library:'+operation,(event,value)=>{
+   if(event.sender!==window?.webContents||event.senderFrame!==window.webContents.mainFrame||new URL(event.senderFrame.url).origin!==server.origin)throw Error('Library access denied.');
+   return library[operation](value);
+  });
+  let closeToken=0,closeTimeout;
+  const finishClose=()=>{readyToClose=true;closing=false;clearTimeout(closeTimeout);app.quit()};
+  const failedClose=async()=>{clearTimeout(closeTimeout);const {response}=await dialog.showMessageBox(window,{type:'warning',message:'Your latest changes could not be saved.',detail:'Stay in Quizhunter to retry or download a study pack. Closing now may lose unsaved changes.',buttons:['Keep studying','Close without saving'],defaultId:0,cancelId:0});if(response===1)finishClose();else closing=false};
+  const requestClose=()=>{if(closing||!window)return;closing=true;window.webContents.send('library:before-close',++closeToken);closeTimeout=setTimeout(()=>void failedClose(),15000)};
+  window.on('close',event=>{if(!readyToClose){event.preventDefault();requestClose()}});
+  ipcMain.on('library:close-ready',(event,token,saved)=>{if(!closing||token!==closeToken||event.sender!==window?.webContents||event.senderFrame!==window.webContents.mainFrame)return;if(saved)finishClose();else void failedClose()});
+  app.on('before-quit',event=>{if(!readyToClose&&window){event.preventDefault();requestClose()}});
   const openTrustedLink=url=>{try{const u=new URL(url);if(u.protocol==='https:'&&['platform.openai.com','github.com'].includes(u.hostname))void shell.openExternal(u.href)}catch{}};
   window.webContents.setWindowOpenHandler(({url})=>{openTrustedLink(url);return {action:'deny'}});
   window.webContents.on('will-navigate',(event,url)=>{if(new URL(url).origin!==server.origin){event.preventDefault();openTrustedLink(url)}});
@@ -27,7 +40,7 @@ else{
   ]));
   await window.loadURL(server.origin);window.show();
   window.on('closed',()=>{window=null;app.quit()});
- }).catch(error=>{dialog.showErrorBox('Quizhunter could not start',error.message||'Please reinstall Quizhunter.');app.quit()});
- app.on('before-quit',()=>{if(server){void server.close();server=null}});
+ }).catch(error=>{readyToClose=true;dialog.showErrorBox('Quizhunter could not start',error.message||'Please reinstall Quizhunter.');app.quit()});
+ app.on('will-quit',()=>{if(server){void server.close();server=null}});
  app.on('window-all-closed',()=>app.quit());
 }

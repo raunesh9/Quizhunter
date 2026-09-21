@@ -1,5 +1,5 @@
 import {z} from 'zod';
-import {agentSlideSchema,cardSchema,quizSchema,packContentSchema,packSchema} from './schemas';
+import {agentSlideSchema,cardSchema,quizSchema,lessonSchema,packContentSchema,packSchema} from './schemas';
 import {normalizePractice,practiceSkipReason} from './practice-quality';
 import {MAX_COLLECTION_SLIDES} from './limits';
 import type {AgentResults,AgentSlideResult,Card,Quiz,Slide} from './types';
@@ -40,14 +40,16 @@ const recoverablePack=packContentSchema.extend({
  cards:z.array(z.unknown()).max(MAX_COLLECTION_SLIDES*60),
  quiz:z.array(z.unknown()).max(MAX_COLLECTION_SLIDES*30),
  agentResults:z.record(z.unknown()).optional(),
+ lessons:z.record(z.unknown()),
 });
 export function restoreStudyPack(value:unknown){
  const raw=recoverablePack.parse(value),clean=curatePractice(raw.cards,raw.quiz,raw.deck.slides);
  const progress=raw.progress??{cards:clean.cards.items.map(c=>c.slide),quiz:clean.quiz.items.map(q=>q.slide)};
- const pack=packSchema.parse({...raw,cards:clean.cards.items,quiz:clean.quiz.items,
+ const lessons=Object.fromEntries(Object.entries(raw.lessons).flatMap(([key,value])=>{const lesson=lessonSchema.safeParse(value);return lesson.success?[[key,lesson.data]]:[]}));
+ const pack=packSchema.parse({...raw,lessons,cards:clean.cards.items,quiz:clean.quiz.items,
   progress:{cards:progress.cards.filter(n=>!clean.cards.retry.includes(n)),quiz:progress.quiz.filter(n=>!clean.quiz.retry.includes(n))},
   agentResults:curateAgentResults(raw.agentResults??{},raw.deck.slides)});
- return {pack,removed:clean.cards.removed+clean.quiz.removed};
+ return {pack,removed:clean.cards.removed+clean.quiz.removed+Object.keys(raw.lessons).length-Object.keys(lessons).length};
 }
 
 export function skippedPracticeBundle(slide:Slide,reason:string):AgentSlideResult{

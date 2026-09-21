@@ -26,13 +26,19 @@ function localSchema(mode:keyof typeof outputSchemas,refs:number[],quick=false):
   return {type:'object',properties:{pages:{type:'object',properties:pages,required:Object.keys(pages),additionalProperties:false}},required:['pages'],additionalProperties:false};
  }
  const schema=structuredClone(outputSchemas[mode]) as LocalSchema;
+ if(mode==='agent'&&quick&&schema.properties?.lesson?.properties){
+  const lesson=schema.properties.lesson;
+  lesson.properties=Object.fromEntries(Object.entries(lesson.properties!).filter(([key])=>['slide','bigIdea','explanation','limitations'].includes(key)));
+  lesson.required=Object.keys(lesson.properties);
+ }
  const constrain=(s:LocalSchema,name='')=>{
   if(s.type==='string')s.maxLength=1500;
   if(name==='slide')s.enum=refs;
   if(name==='answer'&&s.type==='integer'){s.minimum=0;s.maximum=3}
   if(s.type==='array'){
-   s.maxItems=({options:4,cards:refs.length*(quick?2:4),quiz:refs.length*(quick?1:2),explanation:quick?2:5,terms:quick?3:8,misconceptions:quick?1:3,limitations:4} as Record<string,number>)[name]??15;
+   s.maxItems=({options:4,cards:refs.length*(quick?2:4),quiz:refs.length*(quick?1:2),explanation:quick?2:5,terms:quick?2:8,misconceptions:quick?1:3,limitations:4,observations:6,relationships:6} as Record<string,number>)[name]??15;
    if(name==='options')s.minItems=4;
+   if(name==='observations'||name==='explanation')s.minItems=1;
    if(s.items)constrain(s.items);
   }
   if(s.properties?.question&&s.properties?.options&&s.properties?.answer){
@@ -56,7 +62,12 @@ function mapLocalAnswers(value:unknown,mode:string){
   const q=item as Record<string,unknown>;
   if(!q||typeof q.correctAnswer!=='string'||!Array.isArray(q.options)||!q.options.every(o=>typeof o==='string'))throw Error('Each quiz needs correctAnswer copied exactly from its options.');
   const clean=(s:string)=>s.trim().replace(/^[A-D][.)]\s+/,'');
-  const options=(q.options as string[]).map(clean),correct=normalizedAnswer(clean(q.correctAnswer));
+  const rawOptions=q.options as string[];
+  const options=rawOptions.map(clean);let correct=normalizedAnswer(clean(q.correctAnswer));
+  // Some local models return a letter despite the schema description. Resolve
+  // it only when all four options explicitly and unambiguously label A–D.
+  const label=q.correctAnswer.trim().match(/^([A-D])[.)]?$/i);
+  if(label&&rawOptions.every((option,i)=>new RegExp('^'+String.fromCharCode(65+i)+'[.)]\\s+').test(option)))correct=normalizedAnswer(options[label[1].toUpperCase().charCodeAt(0)-65]);
   const matches=options.flatMap((option,index)=>normalizedAnswer(option)===correct?[index]:[]);
   if(matches.length!==1)throw Error('correctAnswer must exactly match one distinct quiz option.');
   const {correctAnswer,...rest}=q;void correctAnswer;
@@ -67,6 +78,9 @@ function mapLocalAnswers(value:unknown,mode:string){
 const normalizedAnswer=(s:string)=>s.trim().replace(/\s+/g,' ').toLowerCase();
 function validateLocalOutput(body:z.infer<typeof requestSchema>,value:unknown){
  const refs=body.slides.map(s=>s.number);
+ if(body.mode==='agent'&&body.pace==='quick'&&value&&typeof value==='object'&&'lesson' in value&&value.lesson&&typeof value.lesson==='object'){
+  value={...value,lesson:{title:body.slides[0].title,terms:[],example:'',connections:'',misconceptions:[],check:{question:'',answer:''},...value.lesson}};
+ }
  if(body.pace==='quick'&&refs.length>1&&(body.mode==='cards'||body.mode==='quiz')){
   const pages=value&&typeof value==='object'&&'pages' in value?value.pages:undefined;
   if(!pages||typeof pages!=='object'||Array.isArray(pages)||Object.keys(pages).length!==refs.length)throw Error('Every source page needs its own result in pages.');
@@ -91,7 +105,7 @@ export async function generateLocal(body:z.infer<typeof requestSchema>,signal:Ab
  if(!ready)throw new LocalAIError('The local study model is not installed yet. Finish downloading Gemma 3 in Ollama, then try again.');
  const sourceLength=body.slides.reduce((n,s)=>n+s.text.length+s.notes.length,0);
  if(sourceLength>30000)throw new LocalAIError('This page has too much text for the local model. Split it into smaller pages and try again.',400);
- const task=body.mode==='agent'?`Create one complete study bundle for this source page. Explain its main ideas in 3-5 concise paragraphs, define key terms, give one labeled teaching example, and note source limitations. Select at most 4 distinct flashcards and at most 2 multiple-choice questions; do not force a quota. A ready bundle needs at least one substantive card and one quiz. Each quiz has four distinct options; correctAnswer is the exact text of its correct option. Use the exact supplied study slide number on the lesson and every question. For blank, title-only, references-only or unreadable pages, set practiceStatus to not_applicable, return empty cards and quiz, and explain the precise limitation in practiceNote. Otherwise set practiceStatus to ready. Keep the full response under 900 words.`:jobs[body.mode];
+ const task=body.mode==='agent'&&body.pace==='quick'?`Create one concise study bundle for this page: a short lesson, 1-2 distinct cards, and 1 four-option quiz. The explanation must cover the key source steps and named mechanisms in 2-4 sentences, not just repeat the title. Do not add unrelated misconceptions or treat empty speaker notes as a limitation when the page is readable. Use correctAnswer copied exactly from the right option. Ground all content in this source, use its exact slide number, and report source limitations. For substantive material set practiceStatus ready; for title-only, administrative or unreadable material use not_applicable with a reason and empty practice. Keep the whole bundle about 140-220 words.`:body.mode==='agent'?`Create one complete study bundle for this source page. Explain its main ideas in 3-5 concise paragraphs, define key terms, give one labeled teaching example, and note source limitations. Select at most 4 distinct flashcards and at most 2 multiple-choice questions; do not force a quota. A ready bundle needs at least one substantive card and one quiz. Each quiz has four distinct options; correctAnswer is the exact text of its correct option. Use the exact supplied study slide number on the lesson and every question. For blank, title-only, references-only or unreadable pages, set practiceStatus to not_applicable, return empty cards and quiz, and explain the precise limitation in practiceNote. Otherwise set practiceStatus to ready. Keep the full response under 900 words.`:jobs[body.mode];
  const quick=body.pace==='quick';
  const batched=quick&&body.slides.length>1&&(body.mode==='cards'||body.mode==='quiz');
  const schema=localSchema(body.mode,body.slides.map(s=>s.number),quick);
@@ -102,9 +116,9 @@ export async function generateLocal(body:z.infer<typeof requestSchema>,signal:Ab
   {role:'user',content:JSON.stringify({task:body.mode,level:body.level,depth:body.depth,outline:body.context.slice(0,1500),studentQuestion:body.question,practiceRule})},
   ...body.slides.map(s=>({role:'user',content:JSON.stringify({slide:s.number,sourceDocument:s.source,originalPosition:s.sourceSlide,title:s.title,text:s.text,speakerNotes:s.notes}),...(s.images.length?{images:s.images.map(image=>image.slice(image.indexOf(',')+1))}:{})})),
  ];
- const timeout=AbortSignal.any([signal,AbortSignal.timeout(600000)]);
+ const timeout=AbortSignal.any([signal,AbortSignal.timeout(quick?180000:360000)]);
  for(let attempt=0;attempt<2;attempt++){
-  const response=await fetch(OLLAMA+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:LOCAL_MODEL,messages,stream:false,format:schema,options:{temperature:0,num_ctx:sourceLength>12000?16384:8192,num_predict:3072},keep_alive:'10m'}),signal:timeout});
+  const response=await fetch(OLLAMA+'/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:LOCAL_MODEL,messages,stream:false,format:schema,options:{temperature:0,num_ctx:sourceLength>12000?16384:8192,num_predict:quick?(batched?1800:1400):3072},keep_alive:'10m'}),signal:timeout});
   if(!response.ok)throw new LocalAIError('The local model stopped before completing its answer. Your completed work is kept. Try generating flashcards or a quiz separately.');
   const data=await response.json() as {message?:{content?:string};done?:boolean;done_reason?:string};
   const text=data.message?.content??'';

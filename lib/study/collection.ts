@@ -18,6 +18,7 @@ export function removePages(pack:StudyPack,numbers:number[]):StudyPack|null {
  return {...pack,deck:{...pack.deck,slides,documents:[...new Set(slides.flatMap(s=>s.source?[s.source]:[]))]},
   cards:pack.cards.filter(c=>!removed.has(c.slide)),quiz:pack.quiz.filter(q=>!removed.has(q.slide)),
   lessons:Object.fromEntries(Object.entries(pack.lessons).filter(([,l])=>!removed.has(l.slide))),
+  diagrams:Object.fromEntries(Object.entries(pack.diagrams??{}).filter(([,d])=>!removed.has(d.slide))),
   agentResults:Object.fromEntries(Object.entries(pack.agentResults??{}).filter(([,r])=>!removed.has(r.lesson.slide))),
   progress:{cards:(pack.progress?.cards??[]).filter(n=>!removed.has(n)),quiz:(pack.progress?.quiz??[]).filter(n=>!removed.has(n))},
   hidden:{cards:hidden.cards.filter(keepKey),quiz:hidden.quiz.filter(keepKey),lessons:hidden.lessons.filter(n=>!removed.has(n))}};

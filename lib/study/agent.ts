@@ -1,10 +1,27 @@
-import type {AgentResults,AgentSlideResult,Slide,StudySettings} from './types';
+import type {AgentResults,AgentSlideResult,Slide,StudySettings,Lesson,Card,Quiz} from './types';
 import {validateAgentResult} from './schemas';
 import {studyBatches} from './batches';
 import {curateAgentResults} from './curation';
 import {ZodError} from 'zod';
 
 export const agentResultKey=(level:StudySettings['level'],slide:number,pace:StudySettings['pace']='thorough')=>`${level}:${slide}${pace==='quick'?':quick':''}`;
+export const cachedAgentResult=(results:AgentResults,level:StudySettings['level'],slide:number,pace:StudySettings['pace'])=>results[agentResultKey(level,slide,pace)]??(pace==='quick'?results[agentResultKey(level,slide,'thorough')]:undefined);
+
+// Packs made with the separate Explain, Cards and Quiz actions are already
+// complete even if they predate full-agent checkpoints.
+export function reuseStudyMaterial(previous:AgentResults,slides:Slide[],lessons:Record<string,Lesson>,cards:Card[],quiz:Quiz[],settings:StudySettings):AgentResults{
+ const results=curateAgentResults(previous,slides);
+ for(const slide of slides){
+  if(cachedAgentResult(results,settings.level,slide.number,settings.pace))continue;
+  const depth=settings.pace==='quick'&&lessons[`simple:${settings.level}:${slide.number}`]?'simple':'detailed';
+  const lesson=lessons[`${depth}:${settings.level}:${slide.number}`];
+  if(!lesson)continue;
+  const sourceCards=cards.filter(c=>c.slide===slide.number),sourceQuiz=quiz.filter(q=>q.slide===slide.number);
+  if(!sourceCards.length||!sourceQuiz.length)continue;
+  try{const result=validateAgentResult({lesson,cards:sourceCards.slice(0,4),quiz:sourceQuiz.slice(0,2),practiceStatus:'ready',practiceNote:'Reused your saved explanation, flashcards, and quiz.'},slide.number);results[agentResultKey(settings.level,slide.number,depth==='simple'?'quick':'thorough')]=result}catch{/* Only validated material can become a reusable checkpoint. */}
+ }
+ return results;
+}
 
 export class StudyRequestError extends Error {
   constructor(message:string,public status:number){super(message);this.name='StudyRequestError'}
@@ -35,7 +52,7 @@ type AgentOptions={
 export async function runStudyAgent(options:AgentOptions){
   const {slides,level,previous,pace,signal,request,onStart,onComplete,onError}=options;
   const valid=curateAgentResults(previous,slides);
-  const pending=slides.filter(s=>!valid[agentResultKey(level,s.number,pace)]);
+  const pending=slides.filter(s=>!cachedAgentResult(valid,level,s.number,pace));
   let completed=slides.length-pending.length,consecutiveFailures=0;
   const failures:Record<number,string>={};
   for(const slide of pending){
